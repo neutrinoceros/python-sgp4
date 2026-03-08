@@ -14,11 +14,26 @@
 
 import os
 import sys
+import sysconfig
 from distutils.ccompiler import get_default_compiler
 from distutils.core import setup, Extension
 
 PYTHON_SGP4_COMPILE = os.environ.get('PYTHON_SGP4_COMPILE', '')
+
+USE_PY_LIMITED_API = (
+    # Py_buffer is required
+    sys.version_info >= (3, 11)
+    # LIMITED_API is not compatible with free-threading (as of CPython 3.14)
+    and not sysconfig.get_config_var("Py_GIL_DISABLED")
+)
+ABI3_TARGET_VERSION = "".join(str(_) for _ in sys.version_info[:2])
+ABI3_TARGET_HEX = hex(sys.hexversion & 0xFFFF00F0)
+
 ext_modules = []
+define_macros = []
+
+if USE_PY_LIMITED_API:
+    define_macros.append(("Py_LIMITED_API", ABI3_TARGET_HEX))
 
 if sys.version_info[0] == 3 and PYTHON_SGP4_COMPILE != 'never':
 
@@ -44,6 +59,8 @@ if sys.version_info[0] == 3 and PYTHON_SGP4_COMPILE != 'never':
             'extension/wrapper.cpp',
         ],
         extra_compile_args=extra_compile_args,
+        define_macros=define_macros,
+        py_limited_api=USE_PY_LIMITED_API,
     ))
 
 # Read the package's docstring and "__version__" without importing it.
@@ -98,5 +115,8 @@ setup(
     package_data = {'sgp4': ['SGP4-VER.TLE', 'sample*', 'tcppver.out']},
     provides = ['sgp4'],
     ext_modules = ext_modules,
+    options={
+        "bdist_wheel": {"py_limited_api": "cp%s" % ABI3_TARGET_VERSION}
+    } if USE_PY_LIMITED_API else {},
     **setup_kwargs,
 )
